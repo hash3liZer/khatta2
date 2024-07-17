@@ -1,0 +1,90 @@
+name: Main App Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/main/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/main/**'
+      - '.github/workflows/**'
+
+jobs:
+  run-cypress-tests:
+    name: Run Cypress E2E Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        container: [1, 2, 3, 4, 5]
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        id: pnpm-install
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: |
+            ~/.cache/Cypress
+            ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Setup environment variables
+        run: |
+          touch apps/main/.env
+          echo NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }} >> apps/main/.env
+          echo SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} >> apps/main/.env
+          echo SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }} >> apps/main/.env
+          echo SENTRY_ORG=${{ secrets.SENTRY_ORG }} >> apps/main/.env
+          echo NEXT_PUBLIC_BUTTONDOWN_TOKEN=${{ secrets.BUTTONDOWN_TOKEN }} >> apps/main/.env
+          echo NEXT_PUBLIC_LC_KEY=${{ secrets.LC_KEY }} >> apps/main/.env
+          echo NEXT_PUBLIC_LC_ID=${{ secrets.LC_ID }} >> apps/main/.env
+
+      - name: Test cypress specs
+        uses: cypress-io/github-action@v5
+        with:
+          install: false
+          working-directory: apps/main
+          start: pnpm run dev:test
+          wait-on: 'http://localhost:3000'
+          wait-on-timeout: 120
+          record: true
+          browser: chrome
+          parallel: true
+          group: 'Main App Tests'
+        env:
+          CYPRESS_PROJECT_ID: ${{ secrets.CYPRESS_PROJECT_ID }}
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
